@@ -105,6 +105,11 @@
   }
   html {
     @apply font-sans scroll-smooth;
+    /* Fallback for the instant before Masthead's own measurement effect runs
+       and overwrites this with the header's real rendered height — see
+       Masthead.jsx. Matches its usual size so there's no visible snap once
+       the real value lands. */
+    --masthead-h: 104px;
     /* iOS Safari's elastic rubber-band bounce at the top/bottom edge of the
        page moves the *visual* viewport independently of the layout viewport
        that `position: fixed` is anchored to — during that bounce the fixed
@@ -113,23 +118,10 @@
        it, which is the only fix that actually removes the effect instead of
        just narrowing the window where it can happen. */
     overscroll-behavior-y: none;
-    /* Belt-and-braces: nothing on this site is meant to scroll sideways —
-       the horizontally-scrolling category strip was removed for exactly this
-       reason a few rounds back. `scrollWidth` has measured equal to the
-       viewport in every state tested here, but that only proves what this
-       testing setup can reach; a sub-pixel rounding difference in a flex gap
-       or a negative-margin bleed on a real device or browser this couldn't
-       reproduce is still possible, and its only visible symptom is a
-       horizontal scrollbar that has no reason to ever exist on this layout.
-       Clipping horizontal overflow at the root guarantees it can't appear,
-       regardless of which element eventually turns out to be the source —
-       only the X axis, so vertical scrolling is untouched. */
-    overflow-x: hidden;
   }
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "liga" 1, "kern" 1;
-    overflow-x: hidden;
     /* These ambient glows used to be `background-attachment: fixed`, which
        pins a background to the viewport rather than the page — cheap on a
        short page, but on a long one (Gallery, 136 photos deep) it means the
@@ -266,21 +258,42 @@
    an AF box confirming lock after the shot has already settled. */
 .gallery-frame {
   opacity: 0;
-  transform: rotateX(20deg) translateY(46px) scale(0.94);
+  /* Deliberately NO rotateX here, and no `perspective` on the wrapper any
+     more. An earlier version tilted the card with `rotateX(20deg)` under
+     `perspective: 1000px`, and that was the source of a real horizontal
+     scrollbar on narrow screens: perspective projection renders the near
+     edge of a rotated element LARGER than its layout size, so a card that is
+     already full-bleed (`-mx-6`, exactly viewport-wide) projected ~36px wider
+     than the viewport while it sat in its un-revealed state. With most cards
+     below the fold un-revealed at any moment, that pushed the page wide and
+     produced a horizontal scrollbar — which in turn stretched the fixed
+     masthead past the visible area, throwing its centred logo off-centre and
+     pushing the right-hand avatar partly out of view.
+     Rise + scale + fade + the blur below carry the reveal instead; none of
+     them can ever exceed the element's own layout width. */
+  transform: translateY(52px) scale(0.93);
   transition:
     opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1),
     transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .gallery-frame.is-revealed {
   opacity: 1;
-  transform: rotateX(0deg) translateY(0) scale(1);
+  transform: translateY(0) scale(1);
 }
 .gallery-frame-photo {
   filter: blur(10px);
   transition: filter 1s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .gallery-frame.is-revealed .gallery-frame-photo {
+  /* Same `ken-burns` keyframe already proven on the Home hero and CTA — a
+     slow one-time drift from scale(1) to scale(1.14), `forwards`-filled so it
+     holds its end state rather than looping. Cards used to just sit there,
+     static, once revealed; this keeps the frame gently alive while its
+     caption is being read, rather than the motion stopping the instant the
+     reveal transition ends. Started here rather than on mount so it can't
+     compete with the reveal's own transform for the same 900ms. */
   filter: blur(0);
+  animation: ken-burns 20s ease-out forwards;
 }
 .gallery-frame-bracket {
   opacity: 0.3;
@@ -293,14 +306,27 @@
   opacity: 1;
   transform: scale(1);
 }
+.gallery-frame-accent {
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.45s;
+}
+.gallery-frame.is-revealed .gallery-frame-accent {
+  transform: scaleX(1);
+}
 @media (prefers-reduced-motion: reduce) {
   .gallery-frame,
   .gallery-frame-photo,
-  .gallery-frame-bracket {
+  .gallery-frame-bracket,
+  .gallery-frame-accent {
     transition: none;
+    animation: none;
     opacity: 1;
     transform: none;
     filter: none;
+  }
+  .animate-gold-drift {
+    animation: none;
   }
 }
 
@@ -398,6 +424,16 @@
 }
 .animate-shutter-click {
   animation: shutter-click 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Slow gold wash behind the mobile category trigger — see Gallery.jsx. A
+   single background-position drift, GPU-composited, no JS, no layout cost. */
+@keyframes gold-drift {
+  0%, 100% { background-position: 0% 0%; }
+  50% { background-position: 100% 0%; }
+}
+.animate-gold-drift {
+  animation: gold-drift 9s ease-in-out infinite;
 }
 
 ::-webkit-scrollbar {

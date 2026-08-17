@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { jumpToTop } from "@/lib/scroll";
@@ -55,8 +56,40 @@ function PortfolioTab({ initial, name, href, avatar, align = "start" }) {
 }
 
 export default function Masthead() {
+  const headerRef = useRef(null);
+
+  // Gallery's category bar sticks itself directly beneath this header, and
+  // used to do that by guessing the header's height as a hardcoded pixel
+  // value. That guess came from measuring this component in one environment
+  // with one font-loading timeline — a real phone with a different system
+  // font-size setting, a slower web-font load, or just a slightly different
+  // font-substitution fallback renders this header at a different height,
+  // and a fixed guess doesn't move with it. The bar below would then either
+  // overlap it or leave a gap, and a bar overlapping a header reads exactly
+  // like content getting cut off underneath it. Publishing the header's
+  // *actual* rendered height as a CSS variable means anything anchored to it
+  // tracks the real number instead of a guess, on whatever device renders it.
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return undefined;
+
+    function publish() {
+      document.documentElement.style.setProperty("--masthead-h", `${el.offsetHeight}px`);
+    }
+
+    publish();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", publish);
+      return () => window.removeEventListener("resize", publish);
+    }
+    const observer = new ResizeObserver(publish);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <header
+      ref={headerRef}
       // This used to fade between a translucent resting state and a more
       // opaque one past scrollY 20, tracked by a `scroll` listener. That
       // design was the source of three separate bugs surfacing over several

@@ -191,8 +191,14 @@ export default function Gallery() {
       </section>
 
       {/* ROLL SELECTOR */}
-      {/* top offset tracks the masthead's height (104px), so the roll bar
-          parks directly beneath it instead of sliding under or leaving a gap.
+      {/* `top-[var(--masthead-h)]` reads the header's *actual* rendered
+          height (published by Masthead.jsx) instead of a hardcoded guess —
+          a fixed pixel value here drifts from reality whenever the header
+          renders at a different height than whatever this was last measured
+          at, and a sticky bar that's stuck 10-20px too high or low either
+          overlaps the header or leaves a gap. Reading the live value keeps
+          this correct regardless of font-size settings, font-load timing, or
+          anything else that can change the header's height on a real device.
           `[transform:translateZ(0)]` forces its own compositing layer —
           `sticky` plus `backdrop-filter` can drift out of sync with scrolling
           on iOS. No `backdrop-blur` here any more, matching the masthead
@@ -202,7 +208,7 @@ export default function Gallery() {
           confirmed contributing to dropped frames during scroll on both a
           real phone and a resized desktop window. Bumped to the same 95%
           opacity as the masthead so it reads just as solid without it. */}
-      <section className="sticky top-[104px] z-30 -mt-px border-y border-gold/10 bg-forest/95 [transform:translateZ(0)]">
+      <section className="sticky top-[var(--masthead-h)] z-30 -mt-px border-y border-gold/10 bg-forest/95 [transform:translateZ(0)]">
         <div className="mx-auto max-w-7xl">
           {/* MOBILE — a collapsed trigger showing only the active category,
               expanding into a grid on tap. Replaces an earlier horizontally-
@@ -213,13 +219,31 @@ export default function Gallery() {
               above it. A trigger + dropdown has nothing to swipe sideways at
               all, so there's nothing left to chain. */}
           <div ref={filterWrapRef} className="relative lg:hidden">
+            {/* A slow gold wash behind the trigger row — this bar is flat
+                solid colour otherwise, and on mobile (no wrapping pill row
+                to fill the space, no icons in motion) that read as inert.
+                Purely decorative and purely CSS (background-position drift),
+                so it costs nothing on the main thread — no JS, no per-scroll
+                work, the exact class of cost removed everywhere else on this
+                page recently. Desktop is untouched: this sits inside the
+                `lg:hidden` wrapper, the wrapping pill row below has its own
+                unrelated markup. */}
+            <div
+              aria-hidden="true"
+              className="animate-gold-drift pointer-events-none absolute inset-0 opacity-60"
+              style={{
+                backgroundImage:
+                  "linear-gradient(100deg, transparent 20%, rgba(212,165,38,0.10) 45%, transparent 70%)",
+                backgroundSize: "220% 100%",
+              }}
+            />
             <button
               type="button"
               onClick={() => setFilterOpen((open) => !open)}
               aria-expanded={filterOpen}
-              className="flex w-full items-center gap-3 px-6 py-3.5 text-left"
+              className="relative flex w-full items-center gap-3 px-6 py-3.5 text-left"
             >
-              <Aperture size={16} className="shrink-0 text-gold/70" strokeWidth={1.5} />
+              <Aperture size={16} className="animate-pulse-glow shrink-0 text-gold/80" strokeWidth={1.5} />
               <span className="font-mono truncate text-[11px] uppercase tracking-[0.16em] text-ivory">
                 {activeCategory.label}
               </span>
@@ -392,11 +416,15 @@ export default function Gallery() {
                         full-height, captioned in place, and rack-focuses into
                         view the first time it scrolls on screen (see
                         `.gallery-frame` in index.css for the transition). */}
-                    <div className="relative -mx-6 mb-10 lg:hidden" style={{ perspective: 1000 }}>
+                    {/* No `perspective` on this wrapper: the reveal below is
+                        deliberately 2D. A 3D tilt here projected the
+                        full-bleed card wider than the viewport and was the
+                        cause of the page's horizontal scrollbar — see
+                        `.gallery-frame` in index.css. */}
+                    <div className="relative -mx-6 mb-10 lg:hidden">
                       <div
                         ref={(el) => (frameRefs.current[i] = el)}
                         className="gallery-frame relative overflow-hidden"
-                        style={{ WebkitBackfaceVisibility: "hidden", backfaceVisibility: "hidden" }}
                       >
                         {/* Shown at the frame's own ratio, so nothing is
                             cropped and the subject stays composed exactly as
@@ -430,7 +458,11 @@ export default function Gallery() {
                           <p className="mt-1.5 font-heading text-3xl italic leading-tight text-ivory">
                             {photo.title}
                           </p>
-                          <span className="tag-label mt-1.5 block text-ivory-dim/70">{photo.category}</span>
+                          {/* Draws in from the left a beat after the brackets
+                              lock, the last piece to settle rather than
+                              everything landing on the frame at once. */}
+                          <span className="gallery-frame-accent mt-2 block h-px w-10 bg-gold" />
+                          <span className="tag-label mt-2 block text-ivory-dim/70">{photo.category}</span>
                         </div>
                       </div>
                     </div>
