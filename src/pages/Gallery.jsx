@@ -86,32 +86,58 @@ export default function Gallery() {
       {/* ROLL SELECTOR */}
       {/* top offset tracks the masthead's height (104px), so the roll bar
           parks directly beneath it instead of sliding under or leaving a gap */}
-      <section className="sticky top-[104px] z-30 -mt-px border-y border-gold/10 bg-forest/85 py-4 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-3 gap-y-3 px-6 lg:px-10">
-          <Aperture size={16} className="shrink-0 text-gold/70" strokeWidth={1.5} />
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat.id}
-              type="button"
-              onClick={() => selectCategory(cat.id)}
-              className={cn(
-                "relative rounded-full px-4 py-2 font-mono text-[11px] uppercase tracking-[0.18em] transition-colors",
-                category === cat.id ? "text-forest" : "text-ivory-dim hover:text-ivory"
-              )}
-            >
-              {category === cat.id && (
-                <motion.span
-                  layoutId="gallery-filter-pill"
-                  className="glow-gold absolute inset-0 rounded-full bg-gold"
-                  transition={{ type: "spring", stiffness: 380, damping: 32 }}
-                />
-              )}
-              <span className="relative">{cat.label}</span>
-            </button>
-          ))}
-          <span className="font-mono ml-auto text-xs text-ivory-dim/40">
-            {String(filtered.length).padStart(2, "0")} Frames
-          </span>
+      <section className="sticky top-[104px] z-30 -mt-px border-y border-gold/10 bg-forest/85 backdrop-blur-xl">
+        <div className="mx-auto max-w-7xl">
+          {/* Nine labels used to wrap into a three-row block on narrow
+              screens — a lot of vertical weight for a filter bar that's
+              sticky and eating into the reading area below it. Below `lg`
+              this becomes one row that scrolls sideways instead of stacking;
+              `lg` keeps the original wrapping row exactly as it was, since
+              it never had the problem. Both share the same button elements
+              (only the wrapper classes differ) so there's one `layoutId` for
+              the active-pill highlight, not two competing copies. */}
+          <div
+            className={cn(
+              "no-scrollbar flex items-center gap-2 overflow-x-auto px-6 py-3",
+              "[mask-image:linear-gradient(to_right,transparent,black_20px,black_calc(100%-28px),transparent)]",
+              "lg:flex-wrap lg:gap-x-3 lg:gap-y-3 lg:overflow-visible lg:px-10 lg:py-4 lg:[mask-image:none]"
+            )}
+          >
+            <Aperture size={16} className="hidden shrink-0 text-gold/70 lg:block" strokeWidth={1.5} />
+            {CATEGORIES.map((cat) => (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => selectCategory(cat.id)}
+                className={cn(
+                  "relative shrink-0 rounded-full px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors",
+                  "lg:px-4 lg:py-2 lg:text-[11px] lg:tracking-[0.18em]",
+                  category === cat.id ? "text-forest" : "text-ivory-dim hover:text-ivory"
+                )}
+              >
+                {category === cat.id && (
+                  <motion.span
+                    layoutId="gallery-filter-pill"
+                    className="glow-gold absolute inset-0 rounded-full bg-gold"
+                    transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                  />
+                )}
+                <span className="relative">{cat.label}</span>
+              </button>
+            ))}
+            <span className="font-mono hidden shrink-0 text-xs text-ivory-dim/40 lg:ml-auto lg:block">
+              {String(filtered.length).padStart(2, "0")} Frames
+            </span>
+          </div>
+
+          {/* frame count moves down here on mobile: inside the scroll strip
+              it would scroll out of view instead of staying put like `ml-auto`
+              keeps it on desktop */}
+          <div className="flex justify-end px-6 pb-2.5 lg:hidden">
+            <span className="font-mono text-[10px] text-ivory-dim/40">
+              {String(filtered.length).padStart(2, "0")} Frames
+            </span>
+          </div>
         </div>
       </section>
 

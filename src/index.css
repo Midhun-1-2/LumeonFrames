@@ -136,6 +136,20 @@
     color: transparent;
   }
 
+  /* Hides the scrollbar on an intentionally-scrollable strip (the mobile
+     category rail) without touching the page's own styled scrollbar, which
+     is set globally below via ::-webkit-scrollbar and would otherwise apply
+     here too and add back the bulk this strip exists to remove. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
   .grain-overlay {
     position: relative;
   }
