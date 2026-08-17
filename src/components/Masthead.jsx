@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { jumpToTop } from "@/lib/scroll";
@@ -56,21 +55,30 @@ function PortfolioTab({ initial, name, href, avatar, align = "start" }) {
 }
 
 export default function Masthead() {
-  const [scrolled, setScrolled] = useState(false);
-
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 20);
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
   return (
     <header
-      className={cn(
-        "fixed inset-x-0 top-0 z-50 border-b transition-colors duration-300",
-        scrolled ? "border-gold/10 bg-forest/95 backdrop-blur-xl" : "border-transparent bg-forest/70 backdrop-blur-md"
-      )}
+      // This used to fade between a translucent resting state and a more
+      // opaque one past scrollY 20, tracked by a `scroll` listener. That
+      // design was the source of three separate bugs surfacing over several
+      // rounds: the blur radius snapping instead of easing (transition-colors
+      // doesn't cover backdrop-filter), fixed-position drift on iOS under
+      // backdrop-filter, and the `scrolled` flag simply never updating on a
+      // programmatic scroll, which left the header stuck translucent while
+      // scrolled content showed through it. All three traced back to the
+      // same root: a background that depends on scroll state at all. Always
+      // solid removes the category outright — there's no state to desync,
+      // no property to mistransition, nothing behind it to show through.
+      //
+      // `backdrop-blur-xl` is gone too, for a related reason: at 95% opacity
+      // there's only 5% of "what's behind it" left to blur, so it was buying
+      // almost nothing visually — but `backdrop-filter` on a fixed element
+      // has to resample the page behind it continuously as content scrolls
+      // underneath, every frame, for as long as the page is scrolling. That
+      // cost was confirmed reproducing on both a real phone and a plain
+      // resized desktop window — not iOS-specific gesture physics, just the
+      // page dropping frames under the combined compositing load, which
+      // reads as the header "jumping" even though it never actually moves.
+      className="fixed inset-x-0 top-0 z-50 border-b border-gold/10 bg-forest/95 [transform:translateZ(0)]"
     >
       <div className="mx-auto grid max-w-7xl grid-cols-[1fr_auto_1fr] items-center px-4 py-3 sm:px-8">
         <div className="flex justify-start">

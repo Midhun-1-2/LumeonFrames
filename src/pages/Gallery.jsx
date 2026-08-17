@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Aperture, ArrowUpRight } from "lucide-react";
+import { Aperture, ArrowUpRight, ChevronDown } from "lucide-react";
 import Reveal from "@/components/Reveal";
 import SplitText from "@/components/SplitText";
 import Lightbox from "@/components/Lightbox";
@@ -22,7 +22,12 @@ export default function Gallery() {
   );
   const [lightboxIndex, setLightboxIndex] = useState(null);
   const [activeRow, setActiveRow] = useState(0);
+  const [filterOpen, setFilterOpen] = useState(false);
   const rowRefs = useRef([]);
+  const frameRefs = useRef([]);
+  const filterWrapRef = useRef(null);
+  const archiveRef = useRef(null);
+  const isFirstCategory = useRef(true);
 
   const filtered = useMemo(
     () => (category === "all" ? PHOTOS : PHOTOS.filter((p) => p.category === category)),
@@ -33,6 +38,7 @@ export default function Gallery() {
   // active one, so the plate tracks reading position while scrolling.
   useEffect(() => {
     rowRefs.current = rowRefs.current.slice(0, filtered.length);
+    frameRefs.current = frameRefs.current.slice(0, filtered.length);
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -47,9 +53,109 @@ export default function Gallery() {
     return () => observer.disconnect();
   }, [filtered]);
 
+  // A category with far fewer photos than the one you were just reading can
+  // produce a page much shorter than your current scroll position — filtering
+  // "All" (136 photos) down to a small category while scrolled deep into the
+  // list left nowhere for that scroll offset to go once the page shrank
+  // underneath it, so the browser clamped it straight to the new bottom.
+  //
+  // This has to run as its own effect, *after* the shorter list has already
+  // committed to the DOM — not synchronously inside the click handler. Doing
+  // it in the handler meant calling `scrollIntoView` while the page was still
+  // its old (tall) height; the clamp then happened moments later as React's
+  // render landed, and that forced, unrelated scroll adjustment interrupted
+  // the smooth-scroll animation already in flight, stranding it wherever the
+  // clamp left off — the bottom. Running after commit means any clamping the
+  // browser was going to do has already happened by the time this fires, so
+  // the scroll below starts clean from wherever that left it, with nothing
+  // left to interrupt it partway through.
   useEffect(() => {
     setActiveRow(0);
+    if (isFirstCategory.current) {
+      isFirstCategory.current = false;
+      return;
+    }
+    // Instant rather than smooth: a smooth animation computes its target
+    // once but keeps sampling the page as it plays, and any lazy-loaded
+    // image below the fold shifting layout mid-scroll could tug the
+    // animation off course the same way the original clamp did. Instant
+    // reads the position once and is done, with no window for that.
+    archiveRef.current?.scrollIntoView({ behavior: "auto", block: "start" });
   }, [category]);
+
+  // Mobile-only rack-focus reveal. Desktop tracks reading position with a
+  // sticky plate that has room to breathe beside the list; below `lg` there's
+  // no second column for it, so each row was just a flat static card — no
+  // sense this is a *camera* archive rather than any other list.
+  //
+  // This replaces an earlier version that kept every nearby card's 3D tilt
+  // continuously locked to scroll position — recomputed on every scroll tick
+  // via direct style writes. Even windowed to a handful of rows and batched
+  // through requestAnimationFrame, it was still real per-frame JS work
+  // competing with the browser for the same main thread the fixed masthead
+  // repaints on, and it showed: stutter in the cards, and a header that
+  // visibly lagged behind the scroll. A one-shot reveal can't cause that
+  // class of problem, because after it plays once there's nothing left
+  // running — no listener, no per-frame recompute. Each card starts tilted
+  // back, receded and soft, like a shot still finding focus, and settles
+  // level, full-size and sharp the first time it scrolls into view; the
+  // viewfinder brackets snap tight a beat later, like an AF box confirming
+  // lock. The motion itself is plain CSS transitions (see `.gallery-frame`
+  // in index.css) — this effect's only job is toggling one class per card,
+  // once, via a single shared IntersectionObserver rather than ~136
+  // individual ones.
+  //
+  // No matchMedia gate: these cards are `lg:hidden`, so on desktop they're
+  // `display:none` and never satisfy `isIntersecting` regardless — observing
+  // them there is free. That also sidesteps a real bug a width check would
+  // introduce: mount on a wide screen (gate skips setup) then resize down to
+  // mobile without a reload, and no observer would ever exist to reveal
+  // anything. Leaving it running lets the same observer just start firing
+  // once the cards actually become visible.
+  useEffect(() => {
+    if (typeof IntersectionObserver === "undefined") {
+      frameRefs.current.forEach((el) => el?.classList.add("is-revealed"));
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("is-revealed");
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { rootMargin: "0px 0px -8% 0px", threshold: 0.1 }
+    );
+    frameRefs.current.forEach((el) => el && observer.observe(el));
+    return () => observer.disconnect();
+  }, [filtered]);
+
+  // Closes the mobile category dropdown on an outside tap or Escape. No
+  // dimming backdrop element — that would need `position: fixed`, and the
+  // roll-selector section above is `translateZ(0)` for the iOS compositing
+  // fix, which makes it a containing block that a fixed descendant would be
+  // trapped inside instead of covering the viewport. A plain document-level
+  // listener sidesteps that entirely.
+  useEffect(() => {
+    if (!filterOpen) return undefined;
+    function onPointerDown(e) {
+      if (filterWrapRef.current && !filterWrapRef.current.contains(e.target)) {
+        setFilterOpen(false);
+      }
+    }
+    function onKey(e) {
+      if (e.key === "Escape") setFilterOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [filterOpen]);
 
   function selectCategory(id) {
     setCategory(id);
@@ -61,6 +167,7 @@ export default function Gallery() {
   }
 
   const plate = filtered[activeRow] ?? filtered[0];
+  const activeCategory = CATEGORIES.find((c) => c.id === category) ?? CATEGORIES[0];
 
   return (
     <div className="pt-28 sm:pt-32">
@@ -85,33 +192,100 @@ export default function Gallery() {
 
       {/* ROLL SELECTOR */}
       {/* top offset tracks the masthead's height (104px), so the roll bar
-          parks directly beneath it instead of sliding under or leaving a gap */}
-      <section className="sticky top-[104px] z-30 -mt-px border-y border-gold/10 bg-forest/85 backdrop-blur-xl">
+          parks directly beneath it instead of sliding under or leaving a gap.
+          `[transform:translateZ(0)]` forces its own compositing layer —
+          `sticky` plus `backdrop-filter` can drift out of sync with scrolling
+          on iOS. No `backdrop-blur` here any more, matching the masthead
+          above: a `backdrop-filter` on a bar that's stuck on screen for most
+          of the page's height means resampling everything scrolling underneath
+          it on every frame, for the entire scroll — a real, continuous cost
+          confirmed contributing to dropped frames during scroll on both a
+          real phone and a resized desktop window. Bumped to the same 95%
+          opacity as the masthead so it reads just as solid without it. */}
+      <section className="sticky top-[104px] z-30 -mt-px border-y border-gold/10 bg-forest/95 [transform:translateZ(0)]">
         <div className="mx-auto max-w-7xl">
-          {/* Nine labels used to wrap into a three-row block on narrow
-              screens — a lot of vertical weight for a filter bar that's
-              sticky and eating into the reading area below it. Below `lg`
-              this becomes one row that scrolls sideways instead of stacking;
-              `lg` keeps the original wrapping row exactly as it was, since
-              it never had the problem. Both share the same button elements
-              (only the wrapper classes differ) so there's one `layoutId` for
-              the active-pill highlight, not two competing copies. */}
-          <div
-            className={cn(
-              "no-scrollbar flex items-center gap-2 overflow-x-auto px-6 py-3",
-              "[mask-image:linear-gradient(to_right,transparent,black_20px,black_calc(100%-28px),transparent)]",
-              "lg:flex-wrap lg:gap-x-3 lg:gap-y-3 lg:overflow-visible lg:px-10 lg:py-4 lg:[mask-image:none]"
-            )}
-          >
-            <Aperture size={16} className="hidden shrink-0 text-gold/70 lg:block" strokeWidth={1.5} />
+          {/* MOBILE — a collapsed trigger showing only the active category,
+              expanding into a grid on tap. Replaces an earlier horizontally-
+              scrolling strip: that was the only sideways-scrollable element
+              on the site, nested inside a page that also scrolls vertically,
+              and on iOS a swipe reaching its scroll edge could chain onto
+              the page's own scroll and visibly unsettle the fixed masthead
+              above it. A trigger + dropdown has nothing to swipe sideways at
+              all, so there's nothing left to chain. */}
+          <div ref={filterWrapRef} className="relative lg:hidden">
+            <button
+              type="button"
+              onClick={() => setFilterOpen((open) => !open)}
+              aria-expanded={filterOpen}
+              className="flex w-full items-center gap-3 px-6 py-3.5 text-left"
+            >
+              <Aperture size={16} className="shrink-0 text-gold/70" strokeWidth={1.5} />
+              <span className="font-mono truncate text-[11px] uppercase tracking-[0.16em] text-ivory">
+                {activeCategory.label}
+              </span>
+              <span className="font-mono ml-auto shrink-0 text-[10px] text-ivory-dim/40">
+                {String(filtered.length).padStart(2, "0")} Frames
+              </span>
+              <ChevronDown
+                size={15}
+                className={cn(
+                  "shrink-0 text-gold/70 transition-transform duration-300 ease-out",
+                  filterOpen && "rotate-180"
+                )}
+              />
+            </button>
+
+            {/* A grid rather than a list: nine categories fit in five short
+                rows with nothing to scroll to reach. Each pill fades and
+                lifts in with a slight stagger on open — the panel itself
+                unfolds from the trigger via `scale-y` on the wrapper below,
+                so this is a second, finer layer of motion on top of that,
+                not a substitute for it. Plain CSS transitions throughout —
+                no scroll listener, no per-frame work, nothing that can
+                repeat the jank the previous scroll-linked effects caused. */}
+            <div
+              className={cn(
+                "absolute inset-x-0 top-full origin-top border-b border-gold/10 bg-forest/95 backdrop-blur-xl transition-[transform,opacity] duration-300 ease-out",
+                filterOpen ? "scale-y-100 opacity-100" : "pointer-events-none scale-y-0 opacity-0"
+              )}
+            >
+              <div className="grid grid-cols-2 gap-2 p-4">
+                {CATEGORIES.map((cat, i) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => {
+                      selectCategory(cat.id);
+                      setFilterOpen(false);
+                    }}
+                    style={filterOpen ? { transitionDelay: `${i * 25}ms` } : undefined}
+                    className={cn(
+                      "rounded-md px-3.5 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.14em] transition-all duration-300 ease-out",
+                      filterOpen ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0",
+                      category === cat.id
+                        ? "bg-gold text-forest"
+                        : "bg-forest-soft/50 text-ivory-dim hover:text-ivory"
+                    )}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* DESKTOP — unchanged: every label visible at once, wrapping
+              rather than collapsing, since there's room for it here and it
+              never had a scroll or sticky-drift problem to solve. */}
+          <div className="hidden lg:flex lg:flex-wrap lg:items-center lg:gap-x-3 lg:gap-y-3 lg:px-10 lg:py-4">
+            <Aperture size={16} className="shrink-0 text-gold/70" strokeWidth={1.5} />
             {CATEGORIES.map((cat) => (
               <button
                 key={cat.id}
                 type="button"
                 onClick={() => selectCategory(cat.id)}
                 className={cn(
-                  "relative shrink-0 rounded-full px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors",
-                  "lg:px-4 lg:py-2 lg:text-[11px] lg:tracking-[0.18em]",
+                  "relative shrink-0 rounded-full px-4 py-2 font-mono text-[11px] uppercase tracking-[0.18em] transition-colors",
                   category === cat.id ? "text-forest" : "text-ivory-dim hover:text-ivory"
                 )}
               >
@@ -125,16 +299,7 @@ export default function Gallery() {
                 <span className="relative">{cat.label}</span>
               </button>
             ))}
-            <span className="font-mono hidden shrink-0 text-xs text-ivory-dim/40 lg:ml-auto lg:block">
-              {String(filtered.length).padStart(2, "0")} Frames
-            </span>
-          </div>
-
-          {/* frame count moves down here on mobile: inside the scroll strip
-              it would scroll out of view instead of staying put like `ml-auto`
-              keeps it on desktop */}
-          <div className="flex justify-end px-6 pb-2.5 lg:hidden">
-            <span className="font-mono text-[10px] text-ivory-dim/40">
+            <span className="font-mono ml-auto text-xs text-ivory-dim/40">
               {String(filtered.length).padStart(2, "0")} Frames
             </span>
           </div>
@@ -142,7 +307,13 @@ export default function Gallery() {
       </section>
 
       {/* SPLIT ARCHIVE */}
-      <section className="mx-auto max-w-7xl px-6 pb-32 pt-12 lg:px-10">
+      {/* `scroll-mt` matches the fixed header + sticky roll bar (roughly
+          148px stacked on mobile, ~166px on desktop) so scrolling here via
+          `selectCategory` lands just below them instead of underneath. */}
+      <section
+        ref={archiveRef}
+        className="mx-auto max-w-7xl scroll-mt-[150px] px-6 pb-32 pt-12 lg:scroll-mt-[190px] lg:px-10"
+      >
         <div className="lg:grid lg:grid-cols-[1.05fr_0.95fr] lg:items-start lg:gap-14">
           {/* PLATE — desktop only, follows the reading position */}
           <div className="hidden lg:sticky lg:top-[184px] lg:block">
@@ -218,37 +389,49 @@ export default function Gallery() {
                   >
                     {/* Narrow screens have no second column for the plate, so
                         each frame becomes the plate: full-bleed, near
-                        full-height, captioned in place. */}
-                    <div className="relative -mx-6 mb-8 overflow-hidden lg:hidden">
-                      {/* Shown at the frame's own ratio, so nothing is cropped
-                          and the subject stays composed exactly as shot — a
-                          fixed height here pushed off-centre subjects out of
-                          frame, since every photo places them differently. */}
-                      <img
-                        src={photo.thumb}
-                        alt={photo.alt}
-                        loading={i < 2 ? "eager" : "lazy"}
-                        style={{ aspectRatio: `${photo.w} / ${photo.h}` }}
-                        className="w-full object-cover"
-                      />
-                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink via-ink/10 to-ink/20" />
+                        full-height, captioned in place, and rack-focuses into
+                        view the first time it scrolls on screen (see
+                        `.gallery-frame` in index.css for the transition). */}
+                    <div className="relative -mx-6 mb-10 lg:hidden" style={{ perspective: 1000 }}>
+                      <div
+                        ref={(el) => (frameRefs.current[i] = el)}
+                        className="gallery-frame relative overflow-hidden"
+                        style={{ WebkitBackfaceVisibility: "hidden", backfaceVisibility: "hidden" }}
+                      >
+                        {/* Shown at the frame's own ratio, so nothing is
+                            cropped and the subject stays composed exactly as
+                            shot — a fixed height here pushed off-centre
+                            subjects out of frame, since every photo places
+                            them differently. */}
+                        <img
+                          src={photo.thumb}
+                          alt={photo.alt}
+                          loading={i < 2 ? "eager" : "lazy"}
+                          style={{ aspectRatio: `${photo.w} / ${photo.h}` }}
+                          className="gallery-frame-photo w-full object-cover"
+                        />
+                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink via-ink/10 to-ink/20" />
 
-                      {/* viewfinder brackets, matching the desktop plate */}
-                      <div className="pointer-events-none absolute inset-4">
-                        <span className="absolute left-0 top-0 h-5 w-5 border-l border-t border-gold/50" />
-                        <span className="absolute right-0 top-0 h-5 w-5 border-r border-t border-gold/50" />
-                        <span className="absolute bottom-0 left-0 h-5 w-5 border-b border-l border-gold/50" />
-                        <span className="absolute bottom-0 right-0 h-5 w-5 border-b border-r border-gold/50" />
-                      </div>
+                        {/* viewfinder brackets, matching the desktop plate —
+                            here they double as an autofocus box, snapping
+                            tight a beat after the photo settles rather than
+                            sitting at a fixed opacity */}
+                        <div className="gallery-frame-bracket pointer-events-none absolute inset-4">
+                          <span className="absolute left-0 top-0 h-5 w-5 border-l border-t border-gold/70" />
+                          <span className="absolute right-0 top-0 h-5 w-5 border-r border-t border-gold/70" />
+                          <span className="absolute bottom-0 left-0 h-5 w-5 border-b border-l border-gold/70" />
+                          <span className="absolute bottom-0 right-0 h-5 w-5 border-b border-r border-gold/70" />
+                        </div>
 
-                      <div className="absolute inset-x-0 bottom-0 p-7">
-                        <span className="font-mono text-xs text-gold">
-                          {String(i + 1).padStart(2, "0")} / {String(filtered.length).padStart(2, "0")}
-                        </span>
-                        <p className="mt-1.5 font-heading text-3xl italic leading-tight text-ivory">
-                          {photo.title}
-                        </p>
-                        <span className="tag-label mt-1.5 block text-ivory-dim/70">{photo.category}</span>
+                        <div className="absolute inset-x-0 bottom-0 p-7">
+                          <span className="font-mono text-xs text-gold">
+                            {String(i + 1).padStart(2, "0")} / {String(filtered.length).padStart(2, "0")}
+                          </span>
+                          <p className="mt-1.5 font-heading text-3xl italic leading-tight text-ivory">
+                            {photo.title}
+                          </p>
+                          <span className="tag-label mt-1.5 block text-ivory-dim/70">{photo.category}</span>
+                        </div>
                       </div>
                     </div>
 

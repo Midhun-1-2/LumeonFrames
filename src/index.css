@@ -105,14 +105,43 @@
   }
   html {
     @apply font-sans scroll-smooth;
+    /* iOS Safari's elastic rubber-band bounce at the top/bottom edge of the
+       page moves the *visual* viewport independently of the layout viewport
+       that `position: fixed` is anchored to — during that bounce the fixed
+       masthead can visibly detach and lag behind the content for a moment.
+       This turns the bounce off outright rather than trying to out-animate
+       it, which is the only fix that actually removes the effect instead of
+       just narrowing the window where it can happen. */
+    overscroll-behavior-y: none;
+    /* Belt-and-braces: nothing on this site is meant to scroll sideways —
+       the horizontally-scrolling category strip was removed for exactly this
+       reason a few rounds back. `scrollWidth` has measured equal to the
+       viewport in every state tested here, but that only proves what this
+       testing setup can reach; a sub-pixel rounding difference in a flex gap
+       or a negative-margin bleed on a real device or browser this couldn't
+       reproduce is still possible, and its only visible symptom is a
+       horizontal scrollbar that has no reason to ever exist on this layout.
+       Clipping horizontal overflow at the root guarantees it can't appear,
+       regardless of which element eventually turns out to be the source —
+       only the X axis, so vertical scrolling is untouched. */
+    overflow-x: hidden;
   }
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "liga" 1, "kern" 1;
+    overflow-x: hidden;
+    /* These ambient glows used to be `background-attachment: fixed`, which
+       pins a background to the viewport rather than the page — cheap on a
+       short page, but on a long one (Gallery, 136 photos deep) it means the
+       browser keeps recompositing this background against new content
+       scrolling past it for the entire scroll, on every frame. They're a
+       faint, one-time ambient wash at the top of the document, not something
+       that needs to track the viewport as you scroll, so letting them scroll
+       normally with the page removes that cost for exactly the pages where
+       it mattered most. */
     background-image:
       radial-gradient(ellipse 900px 500px at 15% -5%, rgba(212, 165, 38, 0.12), transparent 60%),
       radial-gradient(ellipse 700px 500px at 100% 20%, rgba(201, 119, 42, 0.08), transparent 55%);
-    background-attachment: fixed;
   }
   ::selection {
     background: var(--color-gold);
@@ -134,20 +163,6 @@
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
-  }
-
-  /* Hides the scrollbar on an intentionally-scrollable strip (the mobile
-     category rail) without touching the page's own styled scrollbar, which
-     is set globally below via ::-webkit-scrollbar and would otherwise apply
-     here too and add back the bulk this strip exists to remove. */
-  .no-scrollbar {
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-  .no-scrollbar::-webkit-scrollbar {
-    display: none;
-    width: 0;
-    height: 0;
   }
 
   .grain-overlay {
@@ -239,6 +254,53 @@
   .btn-gold {
     background: linear-gradient(135deg, var(--color-gold-light) 0%, var(--color-gold) 55%, var(--color-amber) 100%);
     color: #1c1206;
+  }
+}
+
+/* Mobile gallery cards: a one-shot rack-focus reveal. Each card starts tilted
+   back, receded and soft — like a shot still finding focus — and settles
+   level, full-size and sharp the first time it scrolls into view (the class
+   is toggled once by a shared IntersectionObserver in Gallery.jsx, then this
+   transition owns the motion — no JS runs per scroll tick). The viewfinder
+   brackets are a separate rule below so they can snap in a beat later, like
+   an AF box confirming lock after the shot has already settled. */
+.gallery-frame {
+  opacity: 0;
+  transform: rotateX(20deg) translateY(46px) scale(0.94);
+  transition:
+    opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.gallery-frame.is-revealed {
+  opacity: 1;
+  transform: rotateX(0deg) translateY(0) scale(1);
+}
+.gallery-frame-photo {
+  filter: blur(10px);
+  transition: filter 1s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.gallery-frame.is-revealed .gallery-frame-photo {
+  filter: blur(0);
+}
+.gallery-frame-bracket {
+  opacity: 0.3;
+  transform: scale(1.2);
+  transition:
+    opacity 0.55s cubic-bezier(0.16, 1, 0.3, 1) 0.25s,
+    transform 0.55s cubic-bezier(0.16, 1, 0.3, 1) 0.25s;
+}
+.gallery-frame.is-revealed .gallery-frame-bracket {
+  opacity: 1;
+  transform: scale(1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .gallery-frame,
+  .gallery-frame-photo,
+  .gallery-frame-bracket {
+    transition: none;
+    opacity: 1;
+    transform: none;
+    filter: none;
   }
 }
 
