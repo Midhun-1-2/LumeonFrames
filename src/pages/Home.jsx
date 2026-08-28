@@ -131,12 +131,35 @@ export default function Home() {
     <div className="overflow-x-clip">
       {/* HERO */}
       <section className="relative flex min-h-[100svh] flex-col justify-end overflow-hidden">
-        <img
-          src="/images/gallery/couple-04.webp"
-          alt="A woman in a red dress resting beneath a tree in the hills"
-          className="animate-ken-burns absolute inset-0 h-full w-full object-cover"
-          loading="eager"
-        />
+        {/* The wide master puts the car on the right and leaves the left
+            third as empty sky — which is exactly where the headline sits, so
+            desktop needs no repositioning. A phone viewport is narrow enough
+            that `object-cover` on that same file would keep only the middle
+            ~31% of its width, framing the railing and cropping the car away
+            entirely. So narrow screens get a 2:3 slice recomposed from the
+            master instead of a browser centre-crop: same frame, car held in
+            the middle band, sky above it and gravel below for the type. */}
+        <picture>
+          <source media="(max-width: 767px)" srcSet="/images/gallery/auto-01-tall.webp" />
+          <img
+            src="/images/gallery/auto-01.webp"
+            alt="A white SUV parked at a clifftop railing against a golden sunset"
+            /* Below md the image is laid out at its own 2:3 aspect and pinned
+               to the top, rather than stretched to fill the section. Filling
+               it means `object-cover` has to discard whatever doesn't match
+               the viewport's aspect — on a ~9:19.5 phone that is about a
+               third of the frame's width, which is what made the photo read
+               as heavily cropped. At natural aspect nothing is discarded:
+               the whole frame is on screen, and the section's remaining
+               height below it is already the darkest end of the overlay
+               gradient, so the photo's lower edge blends into it instead of
+               ending on a visible seam. From md up the wide master's aspect
+               is close enough to the viewport's that cover barely trims it,
+               so it goes back to filling the section. */
+            className="animate-hero-settle hero-photo-fade absolute inset-x-0 top-0 h-auto w-full object-cover md:inset-0 md:h-full"
+            loading="eager"
+          />
+        </picture>
         <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/55 to-ink/25" />
         <div className="absolute inset-0 bg-gradient-to-b from-ink/70 via-transparent to-transparent" />
         <Spotlight />

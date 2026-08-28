@@ -346,6 +346,39 @@
   animation: ken-burns 20s ease-out forwards;
 }
 
+/* Hero-only counterpart to `ken-burns`, running the drift the other way.
+   `ken-burns` ends on scale(1.14) and is `forwards`-filled, so twenty seconds
+   after load the hero sits permanently magnified by 14% — on top of whatever
+   `object-cover` has already cropped to fill the viewport. On a phone that
+   compounds: the frame is cropped to the viewport's aspect first, then
+   enlarged again, and the photo reads as though it were shot much tighter
+   than it was. Settling from 1.06 down to 1 keeps the frame alive on arrival
+   but ends at true scale, so the resting state shows the most of the picture
+   that `object-cover` can show rather than the least. */
+@keyframes hero-settle {
+  0% { transform: scale(1.06) translate3d(0.6%, 0.6%, 0); }
+  100% { transform: scale(1) translate3d(0, 0, 0); }
+}
+.animate-hero-settle {
+  animation: hero-settle 14s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-hero-settle { animation: none; transform: none; }
+}
+
+/* Only relevant below md, where the hero photo sits at its own aspect and so
+   ends part-way down the section. Its bottom edge lands on dark gravel under
+   roughly half-opacity ink, which measures rgb(39,38,29) against a rgb(7,25,21)
+   band — close, but close is still an edge. Fading the last sixth of the photo
+   out means there is no edge to notice at all, and the letterbox reads as
+   deliberate rather than as an image that ran out of room. */
+@media (max-width: 767px) {
+  .hero-photo-fade {
+    -webkit-mask-image: linear-gradient(to bottom, #000 84%, transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 84%, transparent 100%);
+  }
+}
+
 @keyframes pulse-glow {
   0%, 100% { opacity: 0.5; transform: scale(1); }
   50% { opacity: 1; transform: scale(1.15); }
